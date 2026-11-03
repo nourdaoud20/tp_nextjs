@@ -1,48 +1,41 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-const secretKey = process.env.JWT_SECRET;
-if (!secretKey || secretKey.length < 32) {
-  throw new Error("JWT_SECRET doit faire au moins 32 caractères dans le fichier .env");
-}
-
-const encodedKey = new TextEncoder().encode(secretKey);
+const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+export const COOKIE_NAME = "session";
+const MAX_AGE = 60 * 60 * 24 * 7; // 7 jours
 
 export async function createSession(userId: number) {
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
-
-  const session = await new SignJWT({ userId })
+  const token = await new SignJWT({ userId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(encodedKey);
+    .sign(secret);
 
-  const cookieStore = await cookies();
-  cookieStore.set("session", session, {
+  const store = await cookies();
+  store.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    expires: expiresAt,
+    maxAge: MAX_AGE,
   });
 }
 
-export async function getSession() {
-  const cookieStore = await cookies();
-  const cookie = cookieStore.get("session")?.value;
-  if (!cookie) return null;
+export async function getSession(): Promise<{ userId: number } | null> {
+  const store = await cookies();
+  const token = store.get(COOKIE_NAME)?.value;
+  if (!token) return null;
 
   try {
-    const { payload } = await jwtVerify(cookie, encodedKey, {
-      algorithms: ["HS256"],
-    });
-    return payload as { userId: number };
+    const { payload } = await jwtVerify(token, secret);
+    return { userId: payload.userId as number };
   } catch {
-    return null;
+    return null; // token invalide ou expiré
   }
 }
 
 export async function destroySession() {
-  const cookieStore = await cookies();
-  cookieStore.delete("session");
+  const store = await cookies();
+  store.delete(COOKIE_NAME);
 }
