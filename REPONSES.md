@@ -35,3 +35,26 @@
   Le middleware Next.js s'exécute dans l'Edge Runtime, qui ne supporte pas toutes les API Node.js nécessaires au moteur natif de Prisma. La vérification de session s'y fait uniquement en validant le JWT avec `jose`.
 - **Q2 : Qu'est-ce que la défense en profondeur ? Pourquoi ne pas se fier au seul middleware ?**
   Cela consiste à superposer plusieurs couches de protection indépendantes. En cas de contournement ou de mauvaise configuration du middleware, la page `/dashboard` et l'API `/api/auth/me` revérifient la validité de la session côté serveur directement avant d'accéder aux données.
+
+  ## Questions de réflexion — TP3 : Dashboarding
+
+1. **Quelle est la différence entre un KPI et un graphique ?**
+   - Un **KPI (Key Performance Indicator)** est une valeur chiffrée synthétique et immédiate permettant de mesurer une performance clé (ex : *Total étudiants : 42*, *+12 ce mois-ci*).
+   - Un **graphique** est une représentation visuelle permettant d'analyser une évolution dans le temps, une proportion ou une comparaison entre plusieurs catégories (ex : barre de progression, histogramme).
+
+2. **Pourquoi calculer les indicateurs côté serveur ?**
+   - **Sécurité :** évite d'envoyer toute la base de données brute (et des champs sensibles) au navigateur juste pour faire un comptage.
+   - **Performance :** SQLite/Prisma exécute les agrégations (`count`, `orderBy`, `take`) directement en base, ce qui est beaucoup plus rapide et léger pour le client.
+   - **Contrôle d'accès :** permet d'appliquer les filtres liés au rôle avant même que les données ne quittent le serveur.
+
+3. **Pourquoi les chiffres ne doivent-ils pas être codés en dur ?**
+   - Un tableau de bord doit refléter l'état réel et dynamique de la base de données. Des chiffres codés en dur deviennent faux dès la première inscription ou suppression d'un étudiant, rendant l'outil inutile pour la prise de décision.
+
+4. **Comment limiter les données visibles par un enseignant ?**
+   - Côté serveur (dans `getDashboardData` et dans les Route Handlers `/api/students`), on vérifie le rôle extrait de la session en base (`role === "ENSEIGNANT"`). On utilise ensuite `select` dans Prisma pour ne renvoyer que les colonnes autorisées (en excluant systématiquement `password`) et `where` pour restreindre le périmètre aux seuls utilisateurs ayant le rôle `ETUDIANT`.
+
+5. **Quels tests permettent de vérifier le contrôle d'accès ?**
+   - Accéder à `/dashboard` sans être connecté → redirection immédiate vers `/login`.
+   - Se connecter en tant qu'`ETUDIANT` → vérifier que les KPIs globaux et le tableau des autres étudiants ne sont ni affichés ni envoyés par le serveur.
+   - Se connecter en tant qu'`ENSEIGNANT` et `ADMIN` → vérifier que les KPIs correspondent exactement aux enregistrements visibles dans `npx prisma studio`.
+   - Appeler directement `POST` ou `DELETE` sur `/api/students` avec un compte `ETUDIANT` ou `ENSEIGNANT` → vérifier le rejet `403 Forbidden`.
